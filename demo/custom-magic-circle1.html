@@ -71,7 +71,7 @@
 
         var color = "#fdeb1e";
         async function getMaterial(opts) {
-            const { textUrl, fillColor, speed, direction, angle } = opts
+            const { textUrl, fillColor, speed, direction, angle, intensity } = opts
 
             let texture = await new THREE.TextureLoader().load(textUrl)
             texture.wrapS = THREE.ClampToEdgeWrapping
@@ -83,6 +83,10 @@
                     iTime: {
                         type: 'f',
                         value: 0
+                    },
+                    intensity: {
+                        type: 'f',
+                        value: intensity
                     },
                     speed: {
                         type: 'f',
@@ -116,7 +120,8 @@
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
             }`,
                 fragmentShader: `      
-uniform float iTime; 
+uniform float iTime;
+uniform float intensity; 
 uniform float speed; 
 uniform float direction; 
 uniform float angle; 
@@ -152,7 +157,13 @@ void main() {
   st = rotate2d(st,direction*speed*iTime*angle);
   st = translate2d(st,vec2(0.5));
   vec4 tex = texture2D(map, st);
-  gl_FragColor = vec4(tex.rgb * color, tex.a * opacity);
+//   float alpha = tex.a; // 获取像素的alpha值
+//     if (alpha > 0.0) { // 如果不是透明像素
+//         vec3 glow = u_glowColor * u_glowIntensity; // 计算发光颜色
+//         tex.rgb += glow; // 加上发光颜色
+//     }
+  vec4 glowColor = vec4(color, opacity) * intensity;
+  gl_FragColor = vec4(tex.rgb * color, tex.a * opacity)+glowColor;
 }
                 `,
 
@@ -177,7 +188,8 @@ void main() {
                 fillColor: "#fdeb1e",
                 speed: 1,
                 direction: 1,
-                angle: 30
+                angle: 30,
+                intensity: 0.0
             }
             var material1 = await getMaterial(opt1);
             circle1 = new Circle(lnglat, {
@@ -188,7 +200,8 @@ void main() {
                 fillColor: "#fdeb1e",
                 speed: 1,
                 direction: -1,
-                angle: 60
+                angle: 60,
+                intensity: 0.0
             }
             var material2 = await getMaterial(opt2);
             circle2 = new Circle(lnglat, {
@@ -213,6 +226,7 @@ void main() {
                 speed: 1,
                 direction: 1,
                 angle: 30,
+                intensity: 0
             };
 
             var gui = new dat.GUI();
@@ -252,6 +266,9 @@ void main() {
             });
             gui.add(params, 'angle', 0, 360).onChange(function (value) {
                 circle2.getObject3d().material.uniforms.angle.value = value;
+            });
+            gui.add(params, 'intensity', 0, 1).onChange(function (value) {
+                circle2.getObject3d().material.uniforms.intensity.value = value;
             });
         }
 
