@@ -70,7 +70,8 @@
         groupLayer.addTo(map);
 
         var color = "#fdeb1e";
-        async function getMaterial(textUrl, fillColor) {
+        async function getMaterial(opts) {
+            const { textUrl, fillColor, speed, direction, angle } = opts
 
             let texture = await new THREE.TextureLoader().load(textUrl)
             texture.wrapS = THREE.ClampToEdgeWrapping
@@ -79,13 +80,21 @@
             // texture.center = new THREE.Vector2(0.5, 0.5)// 使纹理居中
             const material = new THREE.ShaderMaterial({
                 uniforms: {
-                    TexCoords: {
-                        type: 'v2',
-                        value: new THREE.Vector2(0.5, 0.5)
-                    },
                     iTime: {
                         type: 'f',
                         value: 0
+                    },
+                    speed: {
+                        type: 'f',
+                        value: speed
+                    },
+                    direction: {
+                        type: 'f',
+                        value: direction
+                    },
+                    angle: {
+                        type: 'f',
+                        value: angle
                     },
                     map: {
                         type: 't',
@@ -106,16 +115,43 @@
                 vUv = uv;
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
             }`,
-                fragmentShader: `
-uniform vec2 TexCoords;         
+                fragmentShader: `      
 uniform float iTime; 
+uniform float speed; 
+uniform float direction; 
+uniform float angle; 
 uniform vec3 color;
 uniform sampler2D map;
 uniform float opacity;
 varying vec2 vUv;
 const float DEGREE = 0.2;
+
+
+// 将坐标st 平移dis,返回新的坐标
+vec2 translate2d(vec2 st,vec2 dis){
+  return st+dis;
+}
+
+// 将坐标st，旋转 _angle度
+vec2 rotate2d(vec2 st,float _angle){
+  float rad=radians(_angle);
+  // 旋转矩阵
+  mat2 rotateMat=mat2(cos(rad),-sin(rad),
+                      sin(rad),cos(rad));
+  st*=rotateMat;
+  return st;
+}
+
+
 void main() {
-  vec4 tex = texture2D(map, vUv);
+/**
+   *平移可以直接移动，旋转与缩放需要先将元素移动到原点
+   *处理完成后再移动到原来的位置
+  **/
+  vec2 st = translate2d(vUv,vec2(-0.5));
+  st = rotate2d(st,direction*speed*iTime*angle);
+  st = translate2d(st,vec2(0.5));
+  vec4 tex = texture2D(map, st);
   gl_FragColor = vec4(tex.rgb * color, tex.a * opacity);
 }
                 `,
@@ -136,23 +172,27 @@ void main() {
         var circle1, circle2;
         async function addCircles() {
             var lnglat = [13.384062075483484, 52.52392452635709];
-            var material1 = await getMaterial('/data/ring_9.png', "#fdeb1e");
+            const opt1 = {
+                textUrl: '/data/ring_9.png',
+                fillColor: "#fdeb1e",
+                speed: 1,
+                direction: 1,
+                angle: 30
+            }
+            var material1 = await getMaterial(opt1);
             circle1 = new Circle(lnglat, {
                 radius: 800,
-                rotateOptions: {
-                    speed: 1,
-                    direction: 1,
-                    initAngle: 0,
-                }
             }, material1, threeLayer);
-            var material2 = await getMaterial('/data/ring_8.png', "#fdeb1e");
+            const opt2 = {
+                textUrl: '/data/ring_8.png',
+                fillColor: "#fdeb1e",
+                speed: 1,
+                direction: -1,
+                angle: 60
+            }
+            var material2 = await getMaterial(opt2);
             circle2 = new Circle(lnglat, {
                 radius: 1900,
-                rotateOptions: {
-                    speed: 1,
-                    direction: -1,
-                    initAngle: 0,
-                }
             }, material2, threeLayer);
             circles = [circle1, circle2]
             threeLayer.addMesh(circles);
@@ -169,7 +209,10 @@ void main() {
                 radius: 800,
                 show: true,
                 opacity: 1,
-                altitude: 0
+                altitude: 0,
+                speed: 1,
+                direction: 1,
+                angle: 30,
             };
 
             var gui = new dat.GUI();
@@ -191,20 +234,24 @@ void main() {
             });
             gui.addColor(params, 'color').name('circle color').onChange(function (value) {
                 circle2.getObject3d().material.uniforms.color.value = new THREE.Color(params.color);
-
             });
             gui.add(params, 'radius', 0, 3000).name('circle radius').onChange(function () {
                 circle2.setRadius(params.radius);
-
             });
             gui.add(params, 'opacity', 0, 1).onChange(function () {
                 circle2.getObject3d().material.uniforms.opacity.value = params.opacity;
-
             });
-
             gui.add(params, 'altitude', 0, 300).onChange(function () {
                 circle2.setAltitude(params.altitude);
-
+            });
+            gui.add(params, 'speed', 1, 10).onChange(function (value) {
+                circle2.getObject3d().material.uniforms.speed.value = value;
+            });
+            gui.add(params, 'direction', -1, 1).onChange(function (value) {
+                circle2.getObject3d().material.uniforms.direction.value = value;
+            });
+            gui.add(params, 'angle', 0, 360).onChange(function (value) {
+                circle2.getObject3d().material.uniforms.angle.value = value;
             });
         }
 
@@ -244,7 +291,6 @@ void main() {
                 const z = layer.altitudeToVector3(altitude, altitude).x;
                 const position = layer.coordinateToVector3(coordinate, z);
                 this.getObject3d().position.copy(position);
-                this._angle = options.rotateOptions.initAngle;
             }
 
             setRadius(radius) {
